@@ -1,0 +1,2 @@
+API: iam:DeleteRolePolicy User: arn:aws:iam::082893808893:user/crowsnest-ci-cd is not authorized to perform: iam:DeleteRolePolicy on resource: role agent-role
+16:17:28 UTC-0700	DELETE_FAILED	AWS::IAM::Role	IamRoleLambdaExecution	API: iam:DeleteRole User: arn:aws:iam::082893808893:user/crowsnest-ci-cd is not authorized to perform: iam: on resource: role crowsnest-bob-us-west-2-lambdaRoleDeleteRole

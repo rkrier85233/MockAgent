@@ -1,0 +1,26 @@
+{
+  "authentication": "<TBD>",
+  "source": {
+    "agent-id": "402880fd5864e8ed015864e9e5d00000",
+    "data-source": [
+      {
+        "uri": "file://localhost/tmp/foo.txt",
+        "operation": "COPY",
+        "config": "config-1",
+        "filter": ""
+      }
+    ]
+  },
+  "destination": [
+    {
+      "transport": null,
+      "agent-id": "402880fd5864e8ed015864ea586d0001",
+      "data-sink": [
+        {
+          "uri": "file://localhost/tmp",
+          "config": "config-2"
+        }
+      ]
+    }
+  ]
+}
