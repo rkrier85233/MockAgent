@@ -167,6 +167,8 @@ public class MockAgent {
                         handleDataFlowEvent(sqs, queueUrl, message, agentId);
                     } else if ("RESOURCE_BROWSE_EVENT".equalsIgnoreCase(type)) {
                         handleRemoteBrowse(sqs, queueUrl, message);
+                    } else if (type.startsWith("AGENT_DELETE_EVENT")) {
+                        handleDeleteEvent(sqs, queueUrl, message);
                     } else if (type.startsWith("DATASTORE")) {
                         handleDatastoreEvent(agentId, sqs, queueUrl, message);
                     } else {
@@ -258,6 +260,30 @@ public class MockAgent {
                 throw new RuntimeException("Response was not a 204, response: " + webResponse.getStatusInfo());
             }
             log.info("Responded to datastore request.");
+        } finally {
+            client.close();
+        }
+    }
+
+    private void handleDeleteEvent(AmazonSQS sqs, String queueUrl, Message message) throws IOException {
+        log.info("Received: delete request.");
+
+        String type = message.getMessageAttributes().get("message-type").getStringValue();
+        String messageId = message.getMessageAttributes().get("message-id").getStringValue();
+        String messageReceiptHandle = message.getReceiptHandle();
+        sqs.deleteMessage(new DeleteMessageRequest(queueUrl, messageReceiptHandle));
+
+        JSONObject request = objectMapper.readValue(message.getBody(), JSONObject.class);
+        final String responseUrl = getLink(request, "response").getHref();
+        ResteasyClient client = newResteasyClient();
+        ResteasyWebTarget target = client.target(responseUrl);
+        try {
+            Response webResponse = target.request().header("RefToMessageId", messageId).post(null);
+            if (webResponse.getStatusInfo() != Response.Status.NO_CONTENT) {
+                throw new RuntimeException("Response was not a 204, response: " + webResponse.getStatusInfo());
+            }
+            log.info("Responded to delete request.");
+            System.exit(0);
         } finally {
             client.close();
         }
