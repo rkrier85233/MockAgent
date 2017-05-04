@@ -1,12 +1,13 @@
 package com.cleo.prototype.agent;
 
-import com.cleo.prototype.entities.event.DataFlowEvent;
 import com.cleo.prototype.entities.telemetry.TransferCompleteEvent;
 import com.cleo.prototype.entities.telemetry.TransferDetailEvent;
 import com.cleo.prototype.entities.telemetry.TransferInitiatedEvent;
 import com.cleo.prototype.entities.telemetry.TransferStatusEvent;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
+import net.minidev.json.JSONObject;
 
 import org.jboss.resteasy.client.jaxrs.ResteasyClient;
 import org.jboss.resteasy.client.jaxrs.ResteasyClientBuilder;
@@ -30,6 +31,8 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
+import static com.cleo.prototype.entities.common.Link.getLink;
+
 @Slf4j
 @Getter
 @Builder
@@ -42,16 +45,17 @@ public class MockTransfer implements Runnable {
         objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     }
 
-    private DataFlowEvent event;
+    private JSONObject event;
     private String agentId;
     private String destAgentId;
 
     @Override
     public void run() {
-        final String initiate = event.getLink("initiate").getHref();
-        final String details = event.getLink("details").getHref();
-        final String status = event.getLink("status").getHref();
-        final String complete = event.getLink("result").getHref();
+        getLink(event, "initiate");
+        final String initiate = getLink(event, "initiate").getHref();
+        final String details = getLink(event, "details").getHref();
+        final String status = getLink(event, "status").getHref();
+        final String complete = getLink(event, "result").getHref();
 
         final long oneMeg = (long) Math.pow(1024, 2);
         final long[] lens = new long[]{

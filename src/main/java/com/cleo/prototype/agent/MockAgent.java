@@ -189,16 +189,18 @@ public class MockAgent {
     }
 
     private void handleDataFlowEvent(AmazonSQS sqs, String queueUrl, Message message, String agentId) throws IOException {
-        DataFlowEvent event = objectMapper.readValue(message.getBody(), DataFlowEvent.class);
-        log.info("Received: " + event.getAction() + " action, flow ID: " + event.getId() + ".");
+        JSONObject event = objectMapper.readValue(message.getBody(), JSONObject.class);
+        String id = (String) event.get("id");
+        String action = (String) event.get("action");
+        log.info("Received: " + action + " action, flow ID: " + id + ".");
         String messageReceiptHandle = message.getReceiptHandle();
         sqs.deleteMessage(new DeleteMessageRequest(queueUrl, messageReceiptHandle));
-        if ("configure".equalsIgnoreCase(event.getAction())) {
-            File file = new File(dataflowsDir, event.getId() + ".json");
+        if ("configure".equalsIgnoreCase(action)) {
+            File file = new File(dataflowsDir, id + ".json");
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(file, event);
         }
-        if ("transfer".equalsIgnoreCase(event.getAction())) {
-            System.out.println(message.getBody());
+        if ("run_now".equalsIgnoreCase(action)) {
+            System.out.println(objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(event));
             mockATransfer(event, agentId);
             System.out.println("Done mocking transfer");
         }
@@ -289,8 +291,9 @@ public class MockAgent {
         }
     }
 
-    private void mockATransfer(DataFlowEvent event, String agentId) throws IOException {
-        File file = new File(dataflowsDir, event.getId() + ".json");
+    private void mockATransfer(JSONObject event, String agentId) throws IOException {
+        String id = (String) event.get("id");
+        File file = new File(dataflowsDir, id + ".json");
         final String destAgentId = objectMapper.readValue(file, DataFlowEvent.class).getDestinations().get(0).getAgentId();
         executor.execute(MockTransfer.builder()
                 .agentId(agentId)

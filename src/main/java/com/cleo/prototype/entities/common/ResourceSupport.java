@@ -1,6 +1,7 @@
 package com.cleo.prototype.entities.common;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonInclude;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -11,6 +12,7 @@ import lombok.Setter;
 public abstract class ResourceSupport {
     @Getter
     @Setter
+    @JsonInclude(value = JsonInclude.Include.NON_EMPTY)
     private List<Link> links = new ArrayList<>();
 
     @JsonIgnore

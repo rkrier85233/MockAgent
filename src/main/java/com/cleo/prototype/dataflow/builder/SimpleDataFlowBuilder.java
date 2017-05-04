@@ -2,7 +2,9 @@ package com.cleo.prototype.dataflow.builder;
 
 import com.cleo.prototype.entities.dataflow.DataFlow;
 import com.cleo.prototype.entities.dataflow.Destination;
-import com.cleo.prototype.entities.dataflow.Endpoint;
+import com.cleo.prototype.entities.dataflow.FlowOperation;
+import com.cleo.prototype.entities.dataflow.ItemMatch;
+import com.cleo.prototype.entities.dataflow.Recurrence;
 import com.cleo.prototype.entities.dataflow.Source;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -13,8 +15,10 @@ import org.jboss.resteasy.client.jaxrs.ResteasyWebTarget;
 import org.jboss.resteasy.client.jaxrs.engines.URLConnectionEngine;
 import org.jboss.resteasy.plugins.providers.jackson.ResteasyJackson2Provider;
 
+import java.net.URI;
 import java.util.List;
 import java.util.Scanner;
+import java.util.concurrent.TimeUnit;
 
 import javax.ws.rs.client.Entity;
 import javax.ws.rs.core.GenericType;
@@ -72,76 +76,12 @@ public class SimpleDataFlowBuilder {
         Response response = target.request()
                 .header(HttpHeaders.AUTHORIZATION, authHeader)
                 .post(entity);
-        String location = response.getHeaderString("location");
+        URI location = response.getLocation();
 
         target = client.target(location);
         return target.request()
                 .header(HttpHeaders.AUTHORIZATION, authHeader)
                 .get(DataFlow.class);
-    }
-
-    public Source addSource(DataFlow dataFlow, Source source) {
-        String url = dataFlow.getLink("sources").getHref();
-        ResteasyWebTarget target = client.target(url);
-
-        Entity<Source> entity = Entity.entity(source, MediaType.APPLICATION_JSON_TYPE);
-        Response response = target.request()
-                .header(HttpHeaders.AUTHORIZATION, authHeader)
-                .post(entity);
-        String location = response.getHeaderString("location");
-
-        target = client.target(location);
-        return target.request()
-                .header(HttpHeaders.AUTHORIZATION, authHeader)
-                .get(Source.class);
-    }
-
-    public Endpoint addSourceEndpoint(Source source, Endpoint endpoint) {
-        String url = source.getLink("endpoints").getHref();
-        ResteasyWebTarget target = client.target(url);
-
-        Entity<Endpoint> entity = Entity.entity(endpoint, MediaType.APPLICATION_JSON_TYPE);
-        Response response = target.request()
-                .header(HttpHeaders.AUTHORIZATION, authHeader)
-                .post(entity);
-        String location = response.getHeaderString("location");
-
-        target = client.target(location);
-        return target.request()
-                .header(HttpHeaders.AUTHORIZATION, authHeader)
-                .get(Endpoint.class);
-    }
-
-    public Destination addDestination(DataFlow dataFlow, Destination destination) {
-        String url = dataFlow.getLink("destinations").getHref();
-        ResteasyWebTarget target = client.target(url);
-
-        Entity<Destination> entity = Entity.entity(destination, MediaType.APPLICATION_JSON_TYPE);
-        Response response = target.request()
-                .header(HttpHeaders.AUTHORIZATION, authHeader)
-                .post(entity);
-        String location = response.getHeaderString("location");
-
-        target = client.target(location);
-        return target.request()
-                .header(HttpHeaders.AUTHORIZATION, authHeader)
-                .get(Destination.class);
-    }
-
-    public Endpoint addDestinationEndpoint(Destination destination, Endpoint endpoint) {
-        String url = destination.getLink("endpoints").getHref();
-        ResteasyWebTarget target = client.target(url);
-
-        Entity<Endpoint> entity = Entity.entity(endpoint, MediaType.APPLICATION_JSON_TYPE);
-        Response response = target.request()
-                .header(HttpHeaders.AUTHORIZATION, authHeader)
-                .post(entity);
-        String location = response.getHeaderString("location");
-
-        target = client.target(location);
-        return target.request()
-                .header(HttpHeaders.AUTHORIZATION, authHeader)
-                .get(Endpoint.class);
     }
 
     public Response doAction(String url) {
@@ -185,10 +125,10 @@ public class SimpleDataFlowBuilder {
         if (saasUrl == null || saasUrl.trim().length() == 0) {
             saasUrl = BASE_URL;
         }
-        System.out.print("Enter source agent ID:> ");
-        String sourceAgentId = reader.nextLine();
-        System.out.print("Enter destination agent ID:> ");
-        String destinationId = reader.nextLine();
+        System.out.print("Enter source data store ID:> ");
+        String sourceDatastoreId = reader.nextLine();
+        System.out.print("Enter destination data store ID:> ");
+        String destinationDatastoreId = reader.nextLine();
         System.out.print("Enter data flow name:> ");
         String dataFlowName = reader.nextLine();
         System.out.print("Clean old data flows (Y/n):> ");
@@ -206,45 +146,39 @@ public class SimpleDataFlowBuilder {
         DataFlow dataFlow = DataFlow.builder()
                 .name(dataFlowName)
                 .description("This is a mock data flow.")
-                .operation(DataFlow.FlowOperation.COPY)
+                .operation(FlowOperation.COPY)
                 .build();
+
+        Recurrence recurrence = Recurrence.builder()
+                .interval(6)
+                .timeUnit(TimeUnit.HOURS)
+                .build();
+
+        dataFlow.setRecurrence(recurrence);
+
+        Source source = Source.builder()
+                .datastoreId(sourceDatastoreId)
+                .subPath("foo/bar")
+                .itemMatch(ItemMatch.PATTERN_MATCH)
+                .pattern("*.pdf")
+                .build();
+
+        dataFlow.setSource(source);
+
+        Destination destination = Destination.builder()
+                .datastoreId(destinationDatastoreId)
+                .subPath("foo/bar")
+                .build();
+
+        dataFlow.setDestination(destination);
+
 
         dataFlow = builder.createDataFlow(saasUrl + "/api/dataflow", dataFlow);
         System.out.println("Added data flow ID: " + dataFlow.getId());
 
-        Source source = Source.builder()
-                .accessPointId(sourceAgentId)
-                .build();
-
-        source = builder.addSource(dataFlow, source);
-        System.out.println("Added source agent to data flow ID: " + dataFlow.getId());
-
-        Destination destination = Destination.builder()
-                .accessPointId(destinationId)
-                .build();
-
-        destination = builder.addDestination(dataFlow, destination);
-        System.out.println("Added destination agent to data flow ID: " + dataFlow.getId());
-
-        Endpoint sourceEndpoint = Endpoint.builder()
-                .uri("file:///foo/bar")
-                .config("config-1")
-                .build();
-
-        sourceEndpoint = builder.addSourceEndpoint(source, sourceEndpoint);
-        System.out.println("Added source endpoint to data flow ID: " + dataFlow.getId());
-
-        Endpoint destinationEndpoint = Endpoint.builder()
-                .uri("file:///remote/dir/rec")
-                .config("config-2")
-                .build();
-
-        destinationEndpoint = builder.addDestinationEndpoint(destination, destinationEndpoint);
-        System.out.println("Added destination endpoint to data flow ID: " + dataFlow.getId());
-
-        String actionUrl = dataFlow.getLink("configure").getHref();
-        Response response = builder.doAction(actionUrl);
-        System.out.println("Configure action for data flow ID: " + dataFlow.getId() + " returned: " + response.getStatus());
+//        String actionUrl = dataFlow.getLink("configure").getHref();
+//        Response response = builder.doAction(actionUrl);
+//        System.out.println("Configure action for data flow ID: " + dataFlow.getId() + " returned: " + response.getStatus());
         builder.client.close();
     }
 }
