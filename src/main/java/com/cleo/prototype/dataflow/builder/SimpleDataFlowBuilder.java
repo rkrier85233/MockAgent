@@ -77,12 +77,20 @@ public class SimpleDataFlowBuilder {
         Response response = target.request()
                 .header(HttpHeaders.AUTHORIZATION, authHeader)
                 .post(entity);
+        if (response.getStatus() != 201) {
+            String body = response.readEntity(String.class);
+            System.out.println("Unable to create data flow at status: " + response.getStatus());
+            System.out.println(body);
+            return null;
+        }
         URI location = response.getLocation();
 
         target = client.target(location);
-        return target.request()
+        dataFlow = target.request()
                 .header(HttpHeaders.AUTHORIZATION, authHeader)
                 .get(DataFlow.class);
+        System.out.println("Added data flow ID: " + dataFlow.getId());
+        return dataFlow;
     }
 
     public Response doAction(String url) {
@@ -175,8 +183,6 @@ public class SimpleDataFlowBuilder {
 
 
         dataFlow = builder.createDataFlow(saasUrl + "/api/dataflow", dataFlow);
-        System.out.println("Added data flow ID: " + dataFlow.getId());
-
 //        String actionUrl = dataFlow.getLink("configure").getHref();
 //        Response response = builder.doAction(actionUrl);
 //        System.out.println("Configure action for data flow ID: " + dataFlow.getId() + " returned: " + response.getStatus());

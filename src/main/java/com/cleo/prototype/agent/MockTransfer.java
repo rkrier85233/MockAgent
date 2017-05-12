@@ -1,13 +1,12 @@
 package com.cleo.prototype.agent;
 
+import com.cleo.prototype.entities.event.DataFlowEvent;
 import com.cleo.prototype.entities.telemetry.TransferCompleteEvent;
 import com.cleo.prototype.entities.telemetry.TransferDetailEvent;
 import com.cleo.prototype.entities.telemetry.TransferInitiatedEvent;
 import com.cleo.prototype.entities.telemetry.TransferStatusEvent;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
-import net.minidev.json.JSONObject;
 
 import org.jboss.resteasy.client.jaxrs.ResteasyClient;
 import org.jboss.resteasy.client.jaxrs.ResteasyClientBuilder;
@@ -34,32 +33,30 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
-import static com.cleo.prototype.entities.common.LinkUtil.getLink;
-
 @Slf4j
 @Getter
 @Builder
 public class MockTransfer implements Runnable {
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
-    private static ExecutorService executor = Executors.newFixedThreadPool(5);
-
     static {
         objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     }
 
-    private JSONObject event;
-    private String agentId;
-    private String destAgentId;
+    private DataFlowEvent event;
 
     @Override
     public void run() {
-        final String dataflowId = (String) event.get("id");
+        ExecutorService executor = Executors.newFixedThreadPool(5);
+
+        final String dataflowId = event.getId();
         final String jobId = UUID.randomUUID().toString();
-        final String initiate = getLink(event, "initiate");
-        final String details = getLink(event, "details");
-        final String status = getLink(event, "status");
-        final String complete = getLink(event, "result");
+        final URI initiate = event.getLink("initiate").getUri();
+        final URI details = event.getLink("details").getUri();
+        final URI status = event.getLink("status").getUri();
+        final URI complete = event.getLink("result").getUri();
+        final String agentId = event.getSources().get(0).getAgentId();
+        final String destAgentId = event.getDestinations().get(0).getAgentId();
 
         final long oneMeg = (long) Math.pow(1024, 2);
         final long[] lens = new long[]{
@@ -93,6 +90,8 @@ public class MockTransfer implements Runnable {
                 .httpEngine(new URLConnectionEngine())
                 .connectionPoolSize(10)
                 .build();
+
+        log.info("Executing mock transfer for data flow: {}", event.getName());
 
         URI uri = UriBuilder.fromUri(initiate).build();
         final TransferInitiatedEvent transferInitiatedEvent = new TransferInitiatedEvent(dataflowId, jobId, agentId);
@@ -151,6 +150,14 @@ public class MockTransfer implements Runnable {
                 .target(client.target(complete))
                 .event(transferCompleteEvent)
                 .build());
+
+        try {
+            executor.shutdown();
+            executor.awaitTermination(10, TimeUnit.MINUTES);
+            log.info("Finished mocking a transfer for data flow: {}.", event.getName());
+        } catch (InterruptedException e) {
+            log.error("Unable to wait for mock transfer for data flow: {} to complete.", event.getName());
+        }
     }
 
     @Builder

@@ -10,6 +10,7 @@ import com.amazonaws.services.sqs.model.DeleteMessageRequest;
 import com.amazonaws.services.sqs.model.Message;
 import com.amazonaws.services.sqs.model.MessageAttributeValue;
 import com.amazonaws.services.sqs.model.ReceiveMessageRequest;
+import com.cleo.prototype.JobScheduler;
 import com.cleo.prototype.entities.activation.ActivationRequest;
 import com.cleo.prototype.entities.activation.AgentInfo;
 import com.cleo.prototype.entities.browse.ResourceBrowseRequest;
@@ -36,8 +37,6 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.Date;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 import javax.ws.rs.client.Entity;
 import javax.ws.rs.core.HttpHeaders;
@@ -60,10 +59,10 @@ public class MockAgent {
         objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     }
 
-    private ExecutorService executor = Executors.newFixedThreadPool(5);
     private File rootDir;
     private File datastoreDir;
     private File dataflowsDir;
+    private JobScheduler jobScheduler;
 
     public AgentInfo getMyInfo(String baseUrl, String name) throws Exception {
         ResteasyClient client = newResteasyClient();
@@ -91,6 +90,8 @@ public class MockAgent {
             datastoreDir.mkdirs();
             dataflowsDir = new File(rootDir, agentInfo.getAgentId() + "/dataflow");
             dataflowsDir.mkdirs();
+            jobScheduler = new JobScheduler(agentInfo.getAgentId());
+            jobScheduler.start(dataflowsDir);
             return agentInfo;
         } finally {
             client.close();
@@ -196,15 +197,17 @@ public class MockAgent {
         String messageReceiptHandle = message.getReceiptHandle();
         sqs.deleteMessage(new DeleteMessageRequest(queueUrl, messageReceiptHandle));
 
-        if (action.startsWith("CONFIGURE")) {
+        if (action.equalsIgnoreCase("CONFIGURE")) {
             File file = new File(dataflowsDir, id + ".json");
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(file, event);
+            DataFlowEvent dataFlowEvent = objectMapper.readValue(message.getBody(), DataFlowEvent.class);
+            jobScheduler.schedule(dataFlowEvent);
         }
 
         if ("CONFIGURE_AND_RUN".equalsIgnoreCase(action)) {
             System.out.println(objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(event));
-            mockATransfer(event, agentId);
-            System.out.println("Done mocking transfer");
+            DataFlowEvent dataFlowEvent = objectMapper.readValue(message.getBody(), DataFlowEvent.class);
+            jobScheduler.runNow(dataFlowEvent);
         }
     }
 
@@ -291,17 +294,6 @@ public class MockAgent {
         } finally {
             client.close();
         }
-    }
-
-    private void mockATransfer(JSONObject event, String agentId) throws IOException {
-        String id = (String) event.get("id");
-        File file = new File(dataflowsDir, id + ".json");
-        final String destAgentId = objectMapper.readValue(file, DataFlowEvent.class).getDestinations().get(0).getAgentId();
-        executor.execute(MockTransfer.builder()
-                .agentId(agentId)
-                .destAgentId(destAgentId)
-                .event(event)
-                .build());
     }
 
     private AmazonSQS newAmazonSQS(AgentInfo agentInfo) {

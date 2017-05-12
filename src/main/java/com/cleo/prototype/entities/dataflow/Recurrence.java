@@ -1,5 +1,7 @@
 package com.cleo.prototype.entities.dataflow;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+
 import java.util.concurrent.TimeUnit;
 
 import lombok.Builder;
@@ -12,6 +14,8 @@ public class Recurrence {
     private boolean enabled;
     private Integer interval;
     private TimeUnit timeUnit;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String type;
 
     // Public no arg constructor needed by persistence layer.
     public Recurrence() {
