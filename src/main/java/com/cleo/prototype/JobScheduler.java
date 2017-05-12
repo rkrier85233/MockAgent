@@ -35,10 +35,7 @@ public class JobScheduler {
         for (File jsonFile : files) {
             try {
                 DataFlowEvent event = objectMapper.readValue(jsonFile, DataFlowEvent.class);
-                String srcAgentId = event.getSources().get(0).getAgentId();
-                if (srcAgentId.equals(agentId)) {
-                    schedule(event);
-                }
+                schedule(event);
             } catch (IOException e) {
                 log.warn("Unable to load file: {}, cause: {}", jsonFile, e, e);
             }
@@ -46,6 +43,9 @@ public class JobScheduler {
     }
 
     public void schedule(DataFlowEvent event) {
+        if (!isMine(event)) {
+            return;
+        }
         waitTaskCompletion(event);
         Recurrence recurrence = event.getRecurrence();
         if (recurrence != null) {
@@ -59,8 +59,11 @@ public class JobScheduler {
     }
 
     public void runNow(DataFlowEvent event) {
-        waitTaskCompletion(event);
+        if (!isMine(event)) {
+            return;
+        }
 
+        waitTaskCompletion(event);
         Runnable task = () -> {
             MockTransfer mockTransfer = MockTransfer.builder()
                     .event(event)
@@ -68,8 +71,8 @@ public class JobScheduler {
             mockTransfer.run();
             schedule(event);
         };
-        ScheduledFuture future = executor.schedule(task, 10, TimeUnit.MILLISECONDS);
 
+        ScheduledFuture future = executor.schedule(task, 10, TimeUnit.MILLISECONDS);
         tasks.put(event.getId(), future);
         log.info("Running immediately data flow: {}.", event.getName());
     }
@@ -86,5 +89,10 @@ public class JobScheduler {
                 log.warn("Unable to wait for previous completion data flow: {}, cause: {}", event.getName(), e, e);
             }
         }
+    }
+
+    private boolean isMine(DataFlowEvent event) {
+        String srcAgentId = event.getSources().get(0).getAgentId();
+        return srcAgentId.equals(agentId);
     }
 }
