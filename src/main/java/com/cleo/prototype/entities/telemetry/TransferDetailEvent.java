@@ -14,14 +14,17 @@ import lombok.Setter;
 
 @Getter
 @Setter
-public class TransferDetailEvent {
-    private String agentId;
+public class TransferDetailEvent extends TransferEvent {
     @JsonSerialize(using = JacksonConfig.DateSerializer.class)
     @JsonDeserialize(using = JacksonConfig.DateDeserializer.class)
     private Date timestamp;
     private long totalBytes;
     private long totalItems;
     private List<Item> items = new ArrayList<>();
+
+    public TransferDetailEvent(String dataflowId, String jobId, String agentId) {
+        super(dataflowId, jobId, agentId);
+    }
 
     @Getter
     @Setter

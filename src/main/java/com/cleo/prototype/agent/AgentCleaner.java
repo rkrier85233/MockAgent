@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Scanner;
 
 import javax.ws.rs.core.GenericType;
+import javax.ws.rs.core.Link;
 import javax.ws.rs.core.Response;
 
 import static com.cleo.prototype.Constants.BASE_URL;
@@ -44,7 +45,7 @@ public class AgentCleaner {
         List<AgentInfo> agents = target.request().get(new GenericType<List<AgentInfo>>() {
         });
         for (AgentInfo agent : agents) {
-            String location = agent.getLink("delete").getHref();
+            Link location = agent.getLink("delete");
             target = client.target(location);
             Response response = target.request().delete();
             if (response.getStatus() != 204) {

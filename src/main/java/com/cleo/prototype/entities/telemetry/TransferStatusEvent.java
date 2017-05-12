@@ -11,8 +11,7 @@ import lombok.Setter;
 
 @Getter
 @Setter
-public class TransferStatusEvent {
-    private String agentId;
+public class TransferStatusEvent extends TransferEvent {
     private String direction;
     private String name;
     private long size;
@@ -23,9 +22,12 @@ public class TransferStatusEvent {
     @JsonDeserialize(using = JacksonConfig.DateDeserializer.class)
     private Date timestamp;
 
+    public TransferStatusEvent(String dataflowId, String jobId, String agentId) {
+        super(dataflowId, jobId, agentId);
+    }
+
     public TransferStatusEvent copy() {
-        TransferStatusEvent copy = new TransferStatusEvent();
-        copy.setAgentId(agentId);
+        TransferStatusEvent copy = new TransferStatusEvent(this.getDataflowId(), this.getJobId(), this.getAgentId());
         copy.setDirection(direction);
         copy.setName(name);
         copy.setSize(size);

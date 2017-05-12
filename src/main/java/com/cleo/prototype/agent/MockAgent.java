@@ -15,7 +15,6 @@ import com.cleo.prototype.entities.activation.AgentInfo;
 import com.cleo.prototype.entities.browse.ResourceBrowseRequest;
 import com.cleo.prototype.entities.browse.ResourceBrowseResponse;
 import com.cleo.prototype.entities.common.AgentException;
-import com.cleo.prototype.entities.common.Link;
 import com.cleo.prototype.entities.event.DataFlowEvent;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -42,6 +41,7 @@ import java.util.concurrent.Executors;
 
 import javax.ws.rs.client.Entity;
 import javax.ws.rs.core.HttpHeaders;
+import javax.ws.rs.core.Link;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 
@@ -49,7 +49,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import static com.cleo.prototype.Constants.AUTH_TOKEN;
 import static com.cleo.prototype.agent.CertificateGenerator.generatePemCer;
-import static com.cleo.prototype.entities.common.Link.getLink;
+import static com.cleo.prototype.entities.common.LinkUtil.getLink;
 
 @Slf4j
 public class MockAgent {
@@ -75,7 +75,7 @@ public class MockAgent {
             AgentInfo agentInfo;
             if (file.exists()) {
                 agentInfo = objectMapper.readValue(file, AgentInfo.class);
-                String selfLink = agentInfo.getLink("self").getHref();
+                Link selfLink = agentInfo.getLink("self");
                 Response response = client.target(selfLink).request().get();
                 if (response.getStatusInfo().equals(Response.Status.NOT_FOUND)) {
                     agentInfo = activate(client, baseUrl, name);
@@ -101,7 +101,7 @@ public class MockAgent {
         String url = baseUrl + "/api/accesspoint";
         JSONObject requestBody = new JSONObject();
         requestBody.put("name", name);
-        requestBody.put("platform", "Redhat");
+        requestBody.put("platform", "RED_HAT");
 
         String authHeader = "Bearer " + AUTH_TOKEN;
         Response response = client.target(url).request()
@@ -143,7 +143,7 @@ public class MockAgent {
     public void processEvents(AgentInfo agentInfo) {
         log.info("Expiration is: {}", agentInfo.getCredentials().getExpiration());
         final String agentId = agentInfo.getAgentId();
-        final String queueUrl = agentInfo.getLink("queue").getHref();
+        final String queueUrl = agentInfo.getLink("queue").getUri().toString();
         for (; ; ) {
             ReceiveMessageRequest receiveMessageRequest = new ReceiveMessageRequest(queueUrl)
                     .withWaitTimeSeconds(20)
@@ -189,16 +189,20 @@ public class MockAgent {
     }
 
     private void handleDataFlowEvent(AmazonSQS sqs, String queueUrl, Message message, String agentId) throws IOException {
-        DataFlowEvent event = objectMapper.readValue(message.getBody(), DataFlowEvent.class);
-        log.info("Received: " + event.getAction() + " action, flow ID: " + event.getId() + ".");
+        JSONObject event = objectMapper.readValue(message.getBody(), JSONObject.class);
+        String id = (String) event.get("id");
+        String action = (String) event.get("action");
+        log.info("Received: " + action + " action, flow ID: " + id + ".");
         String messageReceiptHandle = message.getReceiptHandle();
         sqs.deleteMessage(new DeleteMessageRequest(queueUrl, messageReceiptHandle));
-        if ("configure".equalsIgnoreCase(event.getAction())) {
-            File file = new File(dataflowsDir, event.getId() + ".json");
+
+        if (action.startsWith("CONFIGURE")) {
+            File file = new File(dataflowsDir, id + ".json");
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(file, event);
         }
-        if ("transfer".equalsIgnoreCase(event.getAction())) {
-            System.out.println(message.getBody());
+
+        if ("CONFIGURE_AND_RUN".equalsIgnoreCase(action)) {
+            System.out.println(objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(event));
             mockATransfer(event, agentId);
             System.out.println("Done mocking transfer");
         }
@@ -212,7 +216,7 @@ public class MockAgent {
         sqs.deleteMessage(new DeleteMessageRequest(queueUrl, messageReceiptHandle));
 
         ResourceBrowseRequest request = objectMapper.readValue(message.getBody(), ResourceBrowseRequest.class);
-        final String responseUrl = request.getLink("response").getHref();
+        final URI responseUrl = request.getLink("response").getUri();
         Entity<?> entity;
         try {
             final ResourceBrowseResponse response = ResourceBrowseHandler.build(request);
@@ -243,7 +247,7 @@ public class MockAgent {
         sqs.deleteMessage(new DeleteMessageRequest(queueUrl, messageReceiptHandle));
 
         JSONObject request = objectMapper.readValue(message.getBody(), JSONObject.class);
-        final String responseUrl = getLink(request, "response").getHref();
+        final String responseUrl = getLink(request, "response");
         Entity<?> entity;
         try {
             final JSONObject response = DatastoreHandler.handle(datastoreDir, type, request);
@@ -274,7 +278,7 @@ public class MockAgent {
         sqs.deleteMessage(new DeleteMessageRequest(queueUrl, messageReceiptHandle));
 
         JSONObject request = objectMapper.readValue(message.getBody(), JSONObject.class);
-        final String responseUrl = getLink(request, "response").getHref();
+        final String responseUrl = getLink(request, "response");
         ResteasyClient client = newResteasyClient();
         ResteasyWebTarget target = client.target(responseUrl);
         try {
@@ -289,8 +293,9 @@ public class MockAgent {
         }
     }
 
-    private void mockATransfer(DataFlowEvent event, String agentId) throws IOException {
-        File file = new File(dataflowsDir, event.getId() + ".json");
+    private void mockATransfer(JSONObject event, String agentId) throws IOException {
+        String id = (String) event.get("id");
+        File file = new File(dataflowsDir, id + ".json");
         final String destAgentId = objectMapper.readValue(file, DataFlowEvent.class).getDestinations().get(0).getAgentId();
         executor.execute(MockTransfer.builder()
                 .agentId(agentId)
@@ -326,9 +331,8 @@ public class MockAgent {
 
     private AgentInfo.Credentials renewCredentials(AgentInfo agentInfo) {
         Link renew = agentInfo.getCredentials().getLink("renew");
-        String url = renew.getHref();
         ResteasyClient client = newResteasyClient();
-        ResteasyWebTarget target = client.target(url);
+        ResteasyWebTarget target = client.target(renew);
 
         try {
             return target.request().get(AgentInfo.Credentials.class);

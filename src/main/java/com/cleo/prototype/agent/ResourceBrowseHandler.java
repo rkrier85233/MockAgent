@@ -17,7 +17,17 @@ public class ResourceBrowseHandler {
     }
 
     public static ResourceBrowseResponse build(ResourceBrowseRequest browseRequest) throws AgentException {
-        File file = new File(URI.create(browseRequest.getPath()));
+        File file = null;
+        String path = browseRequest.getPath().replace(" ", "%20");
+        try {
+            file = new File(URI.create(path));
+        } catch (Exception e) {
+            final String message = "Cannot access ${type}: '${resource}' because it does not exist.";
+            throw new AgentException("ERROR", "BAD_FILE_PATH", message)
+                    .addArgs("type", "directory")
+                    .addArgs("resource", browseRequest.getPath());
+
+        }
         if (!file.exists()) {
             final String message = "Cannot access ${type}: '${resource}' because it does not exist.";
             throw new AgentException("ERROR", "RESOURCE_NOT_EXISTS", message)
@@ -56,7 +66,8 @@ public class ResourceBrowseHandler {
             return;
         }
 
-        File file = new File(URI.create(root.getFullPath()));
+        String path = root.getFullPath().replace(" ", "%20");
+        File file = new File(URI.create(path));
         File[] children = file.listFiles();
         if (children == null) {
             return;
