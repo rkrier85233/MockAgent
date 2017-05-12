@@ -11,9 +11,12 @@ import lombok.Setter;
 
 @Getter
 @Setter
-public class TransferInitiatedEvent {
-    private String agentId;
+public class TransferInitiatedEvent extends TransferEvent {
     @JsonSerialize(using = JacksonConfig.DateSerializer.class)
     @JsonDeserialize(using = JacksonConfig.DateDeserializer.class)
     private Date timestamp;
+
+    public TransferInitiatedEvent(String dataflowId, String jobId, String agentId) {
+        super(dataflowId, jobId, agentId);
+    }
 }

@@ -15,9 +15,11 @@ import org.jboss.resteasy.client.jaxrs.ResteasyWebTarget;
 import org.jboss.resteasy.client.jaxrs.engines.URLConnectionEngine;
 import org.jboss.resteasy.plugins.providers.jackson.ResteasyJackson2Provider;
 
+import java.net.URI;
 import java.text.DecimalFormat;
 import java.time.Instant;
 import java.util.Date;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -26,12 +28,13 @@ import java.util.stream.LongStream;
 import javax.ws.rs.client.Entity;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
+import javax.ws.rs.core.UriBuilder;
 
 import lombok.Builder;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
-import static com.cleo.prototype.entities.common.Link.getLink;
+import static com.cleo.prototype.entities.common.LinkUtil.getLink;
 
 @Slf4j
 @Getter
@@ -51,11 +54,12 @@ public class MockTransfer implements Runnable {
 
     @Override
     public void run() {
-        getLink(event, "initiate");
-        final String initiate = getLink(event, "initiate").getHref();
-        final String details = getLink(event, "details").getHref();
-        final String status = getLink(event, "status").getHref();
-        final String complete = getLink(event, "result").getHref();
+        final String dataflowId = (String) event.get("id");
+        final String jobId = UUID.randomUUID().toString();
+        final String initiate = getLink(event, "initiate");
+        final String details = getLink(event, "details");
+        final String status = getLink(event, "status");
+        final String complete = getLink(event, "result");
 
         final long oneMeg = (long) Math.pow(1024, 2);
         final long[] lens = new long[]{
@@ -90,15 +94,14 @@ public class MockTransfer implements Runnable {
                 .connectionPoolSize(10)
                 .build();
 
-        final TransferInitiatedEvent transferInitiatedEvent = new TransferInitiatedEvent();
-        transferInitiatedEvent.setAgentId(agentId);
+        URI uri = UriBuilder.fromUri(initiate).build();
+        final TransferInitiatedEvent transferInitiatedEvent = new TransferInitiatedEvent(dataflowId, jobId, agentId);
         executor.execute(TransferInitiatedTask.builder()
-                .target(client.target(initiate))
+                .target(client.target(uri))
                 .event(transferInitiatedEvent)
                 .build());
 
-        TransferDetailEvent transferDetailEvent = new TransferDetailEvent();
-        transferDetailEvent.setAgentId(agentId);
+        TransferDetailEvent transferDetailEvent = new TransferDetailEvent(dataflowId, jobId, agentId);
         transferDetailEvent.setTotalItems(srcFiles.length);
         transferDetailEvent.setTotalBytes(LongStream.of(lens).sum());
         for (int i = 0; i < srcFiles.length; i++) {
@@ -119,6 +122,8 @@ public class MockTransfer implements Runnable {
 
             executor.execute(TransferStatusTask.builder()
                     .target(client.target(status))
+                    .dataflowId(dataflowId)
+                    .jobId(jobId)
                     .agentId(agentId)
                     .direction("outbound")
                     .name(srcFileName)
@@ -127,6 +132,8 @@ public class MockTransfer implements Runnable {
 
             executor.execute(TransferStatusTask.builder()
                     .target(client.target(status))
+                    .dataflowId(dataflowId)
+                    .jobId(jobId)
                     .agentId(destAgentId)
                     .direction("INBOUND")
                     .name(destFileName)
@@ -135,8 +142,7 @@ public class MockTransfer implements Runnable {
         }
 
         // Send a mock final status from the source agent ID for the entire transfer.
-        TransferCompleteEvent transferCompleteEvent = new TransferCompleteEvent();
-        transferCompleteEvent.setAgentId(agentId);
+        TransferCompleteEvent transferCompleteEvent = new TransferCompleteEvent(dataflowId, jobId, agentId);
         transferCompleteEvent.setState("SUCCESS");
         transferCompleteEvent.setTotal(srcFiles.length);
         transferCompleteEvent.setSucceeded(srcFiles.length);
@@ -176,10 +182,10 @@ public class MockTransfer implements Runnable {
         private TransferStatusEvent event;
 
         @Builder
-        public TransferStatusTask(ResteasyWebTarget target, String agentId, String direction, String name, long size) {
+        public TransferStatusTask(ResteasyWebTarget target, String dataflowId, String jobId,
+                                  String agentId, String direction, String name, long size) {
             this.target = target;
-            event = new TransferStatusEvent();
-            event.setAgentId(agentId);
+            event = new TransferStatusEvent(dataflowId, jobId, agentId);
             event.setDirection(direction);
             event.setName(name);
             event.setSize(size);

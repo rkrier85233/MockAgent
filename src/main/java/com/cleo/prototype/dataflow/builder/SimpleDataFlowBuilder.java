@@ -23,6 +23,7 @@ import java.util.concurrent.TimeUnit;
 import javax.ws.rs.client.Entity;
 import javax.ws.rs.core.GenericType;
 import javax.ws.rs.core.HttpHeaders;
+import javax.ws.rs.core.Link;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 
@@ -57,7 +58,7 @@ public class SimpleDataFlowBuilder {
                 .get(new GenericType<List<DataFlow>>() {
                 });
         for (DataFlow dataFlow : dataFlows) {
-            String location = dataFlow.getLink("delete").getHref();
+            Link location = dataFlow.getLink("delete");
             target = client.target(location);
             Response response = target.request()
                     .header(HttpHeaders.AUTHORIZATION, authHeader)

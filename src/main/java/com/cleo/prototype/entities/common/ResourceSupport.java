@@ -1,7 +1,8 @@
 package com.cleo.prototype.entities.common;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -13,10 +14,15 @@ public abstract class ResourceSupport {
     @Getter
     @Setter
     @JsonInclude(value = JsonInclude.Include.NON_EMPTY)
-    private List<Link> links = new ArrayList<>();
+    @JsonDeserialize(contentUsing = JacksonConfig.LinkDeserializer.class)
+    @JsonSerialize(contentUsing = JacksonConfig.LinkSerializer.class)
+    private List<javax.ws.rs.core.Link> links = new ArrayList<>();
 
-    @JsonIgnore
-    public Link getLink(String rel) {
-        return links.stream().filter(l -> l.getRel().equals(rel)).findFirst().orElse(null);
+    public void add(javax.ws.rs.core.Link link) {
+        links.add(link);
+    }
+
+    public javax.ws.rs.core.Link getLink(String rel) {
+        return links.stream().filter(o -> o.getRel().equals(rel)).findFirst().orElse(null);
     }
 }
