@@ -77,6 +77,15 @@ public class JobScheduler {
         log.info("Running immediately data flow: {}.", event.getName());
     }
 
+    public void delete(DataFlowEvent event) {
+        if (!isMine(event)) {
+            return;
+        }
+
+        log.info("Removing data flow: {} from the schedule.", event.getName());
+        waitTaskCompletion(event);
+    }
+
     private void waitTaskCompletion(DataFlowEvent event) {
         ScheduledFuture task = tasks.get(event.getId());
         if (task != null) {

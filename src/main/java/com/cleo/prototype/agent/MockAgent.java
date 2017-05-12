@@ -202,12 +202,18 @@ public class MockAgent {
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(file, event);
             DataFlowEvent dataFlowEvent = objectMapper.readValue(message.getBody(), DataFlowEvent.class);
             jobScheduler.schedule(dataFlowEvent);
-        }
-
-        if ("CONFIGURE_AND_RUN".equalsIgnoreCase(action)) {
-            System.out.println(objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(event));
+        } else if ("CONFIGURE_AND_RUN".equalsIgnoreCase(action)) {
+            File file = new File(dataflowsDir, id + ".json");
+            objectMapper.writerWithDefaultPrettyPrinter().writeValue(file, event);
             DataFlowEvent dataFlowEvent = objectMapper.readValue(message.getBody(), DataFlowEvent.class);
             jobScheduler.runNow(dataFlowEvent);
+        } else if ("DELETE".equalsIgnoreCase(action)) {
+            File file = new File(dataflowsDir, id + ".json");
+            if (file.exists()) {
+                DataFlowEvent dataFlowEvent = objectMapper.readValue(file, DataFlowEvent.class);
+                jobScheduler.delete(dataFlowEvent);
+                file.delete();
+            }
         }
     }
 

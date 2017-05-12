@@ -9,6 +9,8 @@ import com.cleo.prototype.entities.dataflow.Source;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import net.minidev.json.JSONArray;
+
 import org.jboss.resteasy.client.jaxrs.ResteasyClient;
 import org.jboss.resteasy.client.jaxrs.ResteasyClientBuilder;
 import org.jboss.resteasy.client.jaxrs.ResteasyWebTarget;
@@ -17,6 +19,7 @@ import org.jboss.resteasy.plugins.providers.jackson.ResteasyJackson2Provider;
 
 import java.net.URI;
 import java.util.List;
+import java.util.Map;
 import java.util.Scanner;
 import java.util.concurrent.TimeUnit;
 
@@ -26,6 +29,7 @@ import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Link;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
+import javax.ws.rs.core.UriBuilder;
 
 import static com.cleo.prototype.Constants.AUTH_TOKEN;
 import static com.cleo.prototype.Constants.BASE_URL;
@@ -67,6 +71,20 @@ public class SimpleDataFlowBuilder {
                 System.out.println("Unable to delete data flow at location: " + location + " status: " + response.getStatus());
             }
         }
+    }
+
+    public JSONArray getDatastores(URI uri) {
+        ResteasyWebTarget target = client.target(uri);
+        Response response = target.request()
+                .header(HttpHeaders.AUTHORIZATION, authHeader)
+                .get();
+        if (response.getStatus() != 200) {
+            String body = response.readEntity(String.class);
+            System.out.println("Unable to list datastores, status: " + response.getStatus());
+            System.out.println(body);
+            return null;
+        }
+        return response.readEntity(JSONArray.class);
     }
 
     public DataFlow createDataFlow(String url, DataFlow dataFlow) {
@@ -130,20 +148,54 @@ public class SimpleDataFlowBuilder {
     public static void main(String[] args) {
         Scanner reader = new Scanner(System.in);
         System.out.print("Enter SaaS URL: (ex: " + BASE_URL + ")> ");
-        String saasUrl = reader.nextLine();
+        String saasUrl = reader.next();
         if (saasUrl == null || saasUrl.trim().length() == 0) {
             saasUrl = BASE_URL;
         }
-        System.out.print("Enter source data store ID:> ");
-        String sourceDatastoreId = reader.nextLine();
-        System.out.print("Enter destination data store ID:> ");
-        String destinationDatastoreId = reader.nextLine();
+
+        SimpleDataFlowBuilder builder = new SimpleDataFlowBuilder();
+
+        URI datastoreUri = UriBuilder.fromPath(BASE_URL).path("/api/datastore").build();
+        JSONArray jsonArray = builder.getDatastores(datastoreUri);
+        final int[] sel = {0};
+
+        System.out.println("Select data store:");
+        jsonArray.forEach(i -> {
+            Map item = (Map) i;
+            String prompt = String.format("%s. %s", ++sel[0], item.get("name"));
+            System.out.println(prompt);
+        });
+
+
+        String sourceDatastoreId = null;
+        while (sourceDatastoreId == null) {
+            System.out.print("Select source data store number:> ");
+            int idx = reader.nextInt() - 1;
+            if (idx < 0 || idx >= jsonArray.size()) {
+                System.out.println("Invalid source data store number.");
+            } else {
+                Map item = (Map) jsonArray.get(idx);
+                sourceDatastoreId = (String) item.get("id");
+            }
+        }
+
+        String destinationDatastoreId = null;
+        while (destinationDatastoreId == null) {
+            System.out.print("Select destination data store number:> ");
+            int idx = reader.nextInt() - 1;
+            if (idx < 0 || idx >= jsonArray.size()) {
+                System.out.println("Invalid destination data store number.");
+            } else {
+                Map item = (Map) jsonArray.get(idx);
+                destinationDatastoreId = (String) item.get("id");
+            }
+        }
+
         System.out.print("Enter data flow name:> ");
         String dataFlowName = reader.nextLine();
         System.out.print("Clean old data flows (Y/n):> ");
         String clean = reader.nextLine();
 
-        SimpleDataFlowBuilder builder = new SimpleDataFlowBuilder();
         if (clean.startsWith("Y")) {
             builder.removeAllDataFlows(saasUrl + "/api/dataflow");
             System.out.println("Removed old data flows.");
