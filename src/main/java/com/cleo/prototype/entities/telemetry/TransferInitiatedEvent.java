@@ -16,7 +16,7 @@ public class TransferInitiatedEvent extends TransferEvent {
     @JsonDeserialize(using = JacksonConfig.DateDeserializer.class)
     private Date timestamp;
 
-    public TransferInitiatedEvent(String dataflowId, String jobId, String agentId) {
-        super(dataflowId, jobId, agentId);
+    public TransferInitiatedEvent(String dataflowId, String jobId, String jobToken, String agentId) {
+        super(dataflowId, jobId, jobToken, agentId);
     }
 }
