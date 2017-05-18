@@ -15,6 +15,7 @@ public class DataFlowEvent extends ResourceSupport {
     private String id;
     private String name;
     private String action;
+    private String jobToken;
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private String operation;
     @JsonInclude(JsonInclude.Include.NON_NULL)

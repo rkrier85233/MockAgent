@@ -20,7 +20,7 @@ public class TransferCompleteEvent extends TransferEvent {
     private long succeeded;
     private long failed;
 
-    public TransferCompleteEvent(String dataflowId, String jobId, String agentId) {
-        super(dataflowId, jobId, agentId);
+    public TransferCompleteEvent(String dataflowId, String jobId, String jobToken, String agentId) {
+        super(dataflowId, jobId, jobToken, agentId);
     }
 }

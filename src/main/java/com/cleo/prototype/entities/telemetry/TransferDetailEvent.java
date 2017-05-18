@@ -22,8 +22,8 @@ public class TransferDetailEvent extends TransferEvent {
     private long totalItems;
     private List<Item> items = new ArrayList<>();
 
-    public TransferDetailEvent(String dataflowId, String jobId, String agentId) {
-        super(dataflowId, jobId, agentId);
+    public TransferDetailEvent(String dataflowId, String jobId, String jobToken, String agentId) {
+        super(dataflowId, jobId, jobToken, agentId);
     }
 
     @Getter

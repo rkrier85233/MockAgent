@@ -50,6 +50,7 @@ public class MockTransfer implements Runnable {
         ExecutorService executor = Executors.newFixedThreadPool(5);
 
         final String dataflowId = event.getId();
+        final String jobToken = event.getJobToken();
         final String jobId = UUID.randomUUID().toString();
         final URI initiate = event.getLink("initiate").getUri();
         final URI details = event.getLink("details").getUri();
@@ -94,13 +95,13 @@ public class MockTransfer implements Runnable {
         log.info("Executing mock transfer for data flow: {}", event.getName());
 
         URI uri = UriBuilder.fromUri(initiate).build();
-        final TransferInitiatedEvent transferInitiatedEvent = new TransferInitiatedEvent(dataflowId, jobId, agentId);
+        final TransferInitiatedEvent transferInitiatedEvent = new TransferInitiatedEvent(dataflowId, jobId, jobToken, agentId);
         executor.execute(TransferInitiatedTask.builder()
                 .target(client.target(uri))
                 .event(transferInitiatedEvent)
                 .build());
 
-        TransferDetailEvent transferDetailEvent = new TransferDetailEvent(dataflowId, jobId, agentId);
+        TransferDetailEvent transferDetailEvent = new TransferDetailEvent(dataflowId, jobId, jobToken, agentId);
         transferDetailEvent.setTotalItems(srcFiles.length);
         transferDetailEvent.setTotalBytes(LongStream.of(lens).sum());
         for (int i = 0; i < srcFiles.length; i++) {
@@ -122,6 +123,7 @@ public class MockTransfer implements Runnable {
             executor.execute(TransferStatusTask.builder()
                     .target(client.target(status))
                     .dataflowId(dataflowId)
+                    .jobToken(jobToken)
                     .jobId(jobId)
                     .agentId(agentId)
                     .direction("outbound")
@@ -132,6 +134,7 @@ public class MockTransfer implements Runnable {
             executor.execute(TransferStatusTask.builder()
                     .target(client.target(status))
                     .dataflowId(dataflowId)
+                    .jobToken(jobToken)
                     .jobId(jobId)
                     .agentId(destAgentId)
                     .direction("INBOUND")
@@ -141,7 +144,7 @@ public class MockTransfer implements Runnable {
         }
 
         // Send a mock final status from the source agent ID for the entire transfer.
-        TransferCompleteEvent transferCompleteEvent = new TransferCompleteEvent(dataflowId, jobId, agentId);
+        TransferCompleteEvent transferCompleteEvent = new TransferCompleteEvent(dataflowId, jobId, jobToken, agentId);
         transferCompleteEvent.setState("SUCCESS");
         transferCompleteEvent.setTotal(srcFiles.length);
         transferCompleteEvent.setSucceeded(srcFiles.length);
@@ -189,10 +192,10 @@ public class MockTransfer implements Runnable {
         private TransferStatusEvent event;
 
         @Builder
-        public TransferStatusTask(ResteasyWebTarget target, String dataflowId, String jobId,
+        public TransferStatusTask(ResteasyWebTarget target, String dataflowId, String jobId, String jobToken,
                                   String agentId, String direction, String name, long size) {
             this.target = target;
-            event = new TransferStatusEvent(dataflowId, jobId, agentId);
+            event = new TransferStatusEvent(dataflowId, jobId, jobToken, agentId);
             event.setDirection(direction);
             event.setName(name);
             event.setSize(size);
