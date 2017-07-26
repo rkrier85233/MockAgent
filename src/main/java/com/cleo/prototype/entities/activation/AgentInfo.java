@@ -18,6 +18,7 @@ public class AgentInfo extends ResourceSupport {
     private String name;
     private String publicCertificate;
     private String sqsEndpoint;
+    private String iotEndpoint;
     private String awsRegion;
     private Credentials credentials;
 
@@ -29,6 +30,5 @@ public class AgentInfo extends ResourceSupport {
         @JsonSerialize(using = JacksonConfig.DateSerializer.class)
         @JsonDeserialize(using = JacksonConfig.DateDeserializer.class)
         private Date expiration;
-
     }
 }

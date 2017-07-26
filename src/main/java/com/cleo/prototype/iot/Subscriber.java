@@ -1,6 +1,7 @@
 package com.cleo.prototype.iot;
 
 import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
+import com.amazonaws.services.iot.client.AWSIotDeviceErrorCode;
 import com.amazonaws.services.iot.client.AWSIotException;
 import com.amazonaws.services.iot.client.AWSIotMessage;
 import com.amazonaws.services.iot.client.AWSIotMqttClient;
@@ -36,6 +37,11 @@ public class Subscriber {
         @Override
         public void onMessage(AWSIotMessage message) {
             log.info(message.getStringPayload());
+        }
+
+        @Override
+        public AWSIotDeviceErrorCode getErrorCode() {
+            return super.getErrorCode();
         }
     }
 }

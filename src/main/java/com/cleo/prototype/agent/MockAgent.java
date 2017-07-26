@@ -53,16 +53,18 @@ import static com.cleo.prototype.entities.common.LinkUtil.getLink;
 @Slf4j
 public class MockAgent {
 
-    private static final ObjectMapper objectMapper = new ObjectMapper();
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     static {
-        objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        OBJECT_MAPPER.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     }
 
     private File rootDir;
     private File datastoreDir;
     private File dataflowsDir;
+    private MessageHandler messageHandler;
     private JobScheduler jobScheduler;
+    private HeartbeatPublisher heartbeatPublisher;
 
     public AgentInfo getMyInfo(String baseUrl, String name) throws Exception {
         ResteasyClient client = newResteasyClient();
@@ -73,7 +75,7 @@ public class MockAgent {
             File file = new File(rootDir, name + ".json");
             AgentInfo agentInfo;
             if (file.exists()) {
-                agentInfo = objectMapper.readValue(file, AgentInfo.class);
+                agentInfo = OBJECT_MAPPER.readValue(file, AgentInfo.class);
                 Link selfLink = agentInfo.getLink("self");
                 Response response = client.target(selfLink).request().get();
                 if (response.getStatusInfo().equals(Response.Status.NOT_FOUND)) {
@@ -84,14 +86,18 @@ public class MockAgent {
             } else {
                 agentInfo = activate(client, baseUrl, name);
             }
-            objectMapper.writerWithDefaultPrettyPrinter().writeValue(file, agentInfo);
+            OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValue(file, agentInfo);
 
             datastoreDir = new File(rootDir, agentInfo.getAgentId() + "/datasource");
             datastoreDir.mkdirs();
             dataflowsDir = new File(rootDir, agentInfo.getAgentId() + "/dataflow");
             dataflowsDir.mkdirs();
-            jobScheduler = new JobScheduler(agentInfo.getAgentId());
+            jobScheduler = new JobScheduler(agentInfo);
             jobScheduler.start(dataflowsDir);
+            messageHandler = new MessageHandler(agentInfo);
+            messageHandler.start();
+            heartbeatPublisher = new HeartbeatPublisher(agentInfo);
+            heartbeatPublisher.start();
             return agentInfo;
         } finally {
             client.close();
@@ -99,7 +105,7 @@ public class MockAgent {
     }
 
     private AgentInfo activate(ResteasyClient client, String baseUrl, String name) throws Exception {
-        String url = baseUrl + "/api/accesspoint";
+        String url = baseUrl + "/api/accesspoints";
         JSONObject requestBody = new JSONObject();
         requestBody.put("name", name);
         requestBody.put("platform", "RED_HAT");
@@ -190,7 +196,7 @@ public class MockAgent {
     }
 
     private void handleDataFlowEvent(AmazonSQS sqs, String queueUrl, Message message, String agentId) throws IOException {
-        JSONObject event = objectMapper.readValue(message.getBody(), JSONObject.class);
+        JSONObject event = OBJECT_MAPPER.readValue(message.getBody(), JSONObject.class);
         String id = (String) event.get("id");
         String action = (String) event.get("action");
         log.info("Received: " + action + " action, flow ID: " + id + ".");
@@ -199,18 +205,18 @@ public class MockAgent {
 
         if (action.equalsIgnoreCase("CONFIGURE")) {
             File file = new File(dataflowsDir, id + ".json");
-            objectMapper.writerWithDefaultPrettyPrinter().writeValue(file, event);
-            DataFlowEvent dataFlowEvent = objectMapper.readValue(message.getBody(), DataFlowEvent.class);
+            OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValue(file, event);
+            DataFlowEvent dataFlowEvent = OBJECT_MAPPER.readValue(message.getBody(), DataFlowEvent.class);
             jobScheduler.schedule(dataFlowEvent);
         } else if ("CONFIGURE_AND_RUN".equalsIgnoreCase(action)) {
             File file = new File(dataflowsDir, id + ".json");
-            objectMapper.writerWithDefaultPrettyPrinter().writeValue(file, event);
-            DataFlowEvent dataFlowEvent = objectMapper.readValue(message.getBody(), DataFlowEvent.class);
+            OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValue(file, event);
+            DataFlowEvent dataFlowEvent = OBJECT_MAPPER.readValue(message.getBody(), DataFlowEvent.class);
             jobScheduler.runNow(dataFlowEvent);
         } else if ("DELETE".equalsIgnoreCase(action)) {
             File file = new File(dataflowsDir, id + ".json");
             if (file.exists()) {
-                DataFlowEvent dataFlowEvent = objectMapper.readValue(file, DataFlowEvent.class);
+                DataFlowEvent dataFlowEvent = OBJECT_MAPPER.readValue(file, DataFlowEvent.class);
                 jobScheduler.delete(dataFlowEvent);
                 file.delete();
             }
@@ -224,7 +230,7 @@ public class MockAgent {
         String messageReceiptHandle = message.getReceiptHandle();
         sqs.deleteMessage(new DeleteMessageRequest(queueUrl, messageReceiptHandle));
 
-        ResourceBrowseRequest request = objectMapper.readValue(message.getBody(), ResourceBrowseRequest.class);
+        ResourceBrowseRequest request = OBJECT_MAPPER.readValue(message.getBody(), ResourceBrowseRequest.class);
         final URI responseUrl = request.getLink("response").getUri();
         Entity<?> entity;
         try {
@@ -255,7 +261,7 @@ public class MockAgent {
         String messageReceiptHandle = message.getReceiptHandle();
         sqs.deleteMessage(new DeleteMessageRequest(queueUrl, messageReceiptHandle));
 
-        JSONObject request = objectMapper.readValue(message.getBody(), JSONObject.class);
+        JSONObject request = OBJECT_MAPPER.readValue(message.getBody(), JSONObject.class);
         final String responseUrl = getLink(request, "response");
         Entity<?> entity;
         try {
@@ -286,7 +292,7 @@ public class MockAgent {
         String messageReceiptHandle = message.getReceiptHandle();
         sqs.deleteMessage(new DeleteMessageRequest(queueUrl, messageReceiptHandle));
 
-        JSONObject request = objectMapper.readValue(message.getBody(), JSONObject.class);
+        JSONObject request = OBJECT_MAPPER.readValue(message.getBody(), JSONObject.class);
         final String responseUrl = getLink(request, "response");
         ResteasyClient client = newResteasyClient();
         ResteasyWebTarget target = client.target(responseUrl);
@@ -327,7 +333,7 @@ public class MockAgent {
         return sqs;
     }
 
-    private AgentInfo.Credentials renewCredentials(AgentInfo agentInfo) {
+    public static AgentInfo.Credentials renewCredentials(AgentInfo agentInfo) {
         Link renew = agentInfo.getCredentials().getLink("renew");
         ResteasyClient client = newResteasyClient();
         ResteasyWebTarget target = client.target(renew);
@@ -339,9 +345,9 @@ public class MockAgent {
         }
     }
 
-    private ResteasyClient newResteasyClient() {
+    public static ResteasyClient newResteasyClient() {
         ResteasyJackson2Provider resteasyJacksonProvider = new ResteasyJackson2Provider();
-        resteasyJacksonProvider.setMapper(objectMapper);
+        resteasyJacksonProvider.setMapper(OBJECT_MAPPER);
 
         return new ResteasyClientBuilder()
                 .register(resteasyJacksonProvider)

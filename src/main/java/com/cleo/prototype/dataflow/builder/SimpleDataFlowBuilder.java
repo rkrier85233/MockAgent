@@ -148,7 +148,7 @@ public class SimpleDataFlowBuilder {
     public static void main(String[] args) {
         Scanner reader = new Scanner(System.in);
         System.out.print("Enter SaaS URL: (ex: " + BASE_URL + ")> ");
-        String saasUrl = reader.next();
+        String saasUrl = reader.nextLine();
         if (saasUrl == null || saasUrl.trim().length() == 0) {
             saasUrl = BASE_URL;
         }

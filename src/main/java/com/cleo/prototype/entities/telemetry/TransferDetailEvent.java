@@ -22,8 +22,13 @@ public class TransferDetailEvent extends TransferEvent {
     private long totalItems;
     private List<Item> items = new ArrayList<>();
 
-    public TransferDetailEvent(String dataflowId, String jobId, String jobToken, String agentId) {
-        super(dataflowId, jobId, jobToken, agentId);
+    public TransferDetailEvent(String dataflowId, String jobId, String jobToken, String agentId, Date startDate) {
+        super(dataflowId, jobId, jobToken, agentId, startDate);
+    }
+
+    @Override
+    public String getType() {
+        return "details";
     }
 
     @Getter
@@ -40,8 +45,6 @@ public class TransferDetailEvent extends TransferEvent {
             this.name = name;
             this.size = size;
         }
-
-        //
     }
 
 }

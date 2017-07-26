@@ -16,6 +16,7 @@ public class DataFlowEvent extends ResourceSupport {
     private String name;
     private String action;
     private String jobToken;
+    private String mqttTopicTemplate;
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private String operation;
     @JsonInclude(JsonInclude.Include.NON_NULL)

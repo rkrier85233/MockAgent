@@ -8,10 +8,7 @@ import com.cleo.prototype.entities.telemetry.TransferStatusEvent;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import org.jboss.resteasy.client.jaxrs.ResteasyClient;
-import org.jboss.resteasy.client.jaxrs.ResteasyClientBuilder;
 import org.jboss.resteasy.client.jaxrs.ResteasyWebTarget;
-import org.jboss.resteasy.client.jaxrs.engines.URLConnectionEngine;
 import org.jboss.resteasy.plugins.providers.jackson.ResteasyJackson2Provider;
 
 import java.net.URI;
@@ -32,7 +29,6 @@ import java.util.stream.LongStream;
 import javax.ws.rs.client.Entity;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
-import javax.ws.rs.core.UriBuilder;
 
 import lombok.Builder;
 import lombok.Getter;
@@ -41,13 +37,14 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 @Getter
 @Builder
-public class MockTransfer implements Runnable {
+public class MockTransferMqtt implements Runnable {
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
     static {
         objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     }
 
+    private JobStatusPublisher publisher;
     private DataFlowEvent event;
 
     @Override
@@ -59,8 +56,15 @@ public class MockTransfer implements Runnable {
         final String jobId = UUID.randomUUID().toString();
         final URI initiate = event.getLink("initiate").getUri();
         final URI details = event.getLink("details").getUri();
-        final URI status = event.getLink("status").getUri();
+        final URI status = event.getLink("result").getUri();
         final URI complete = event.getLink("result").getUri();
+
+        final String mqttTopicTemplate = event.getMqttTopicTemplate();
+        final String mqttInitiate = String.format(mqttTopicTemplate, dataflowId, jobId, "initiated");
+        final String mqttDetails = String.format(mqttTopicTemplate, dataflowId, jobId, "details");
+        final String mqttStatus = String.format(mqttTopicTemplate, dataflowId, jobId, "status");
+        final String mqttComplete = String.format(mqttTopicTemplate, dataflowId, jobId, "result");
+
         final String agentId = event.getSources().get(0).getAgentId();
         final String destAgentId = event.getDestinations().get(0).getAgentId();
 
@@ -92,19 +96,13 @@ public class MockTransfer implements Runnable {
         final ResteasyJackson2Provider resteasyJacksonProvider = new ResteasyJackson2Provider();
         resteasyJacksonProvider.setMapper(objectMapper);
 
-        final ResteasyClient client = new ResteasyClientBuilder()
-                .register(resteasyJacksonProvider)
-                .httpEngine(new URLConnectionEngine())
-                .connectionPoolSize(10)
-                .build();
-
         log.info("Executing mock transfer for data flow: {}", event.getName());
         Date startDate = new Date();
 
-        URI uri = UriBuilder.fromUri(initiate).build();
         final TransferInitiatedEvent transferInitiatedEvent = new TransferInitiatedEvent(dataflowId, jobId, jobToken, agentId, startDate);
         waitFor(executor.submit(TransferInitiatedTask.builder()
-                .target(client.target(uri))
+                .target(publisher)
+                .topic(mqttInitiate)
                 .event(transferInitiatedEvent)
                 .build()));
 
@@ -118,7 +116,8 @@ public class MockTransfer implements Runnable {
                     .build());
         }
         waitFor(executor.submit(TransferDetailTask.builder()
-                .target(client.target(details))
+                .target(publisher)
+                .topic(mqttDetails)
                 .event(transferDetailEvent)
                 .build()));
 
@@ -129,7 +128,8 @@ public class MockTransfer implements Runnable {
             final long fileSize = lens[i];
 
             futures.add(executor.submit(TransferStatusTask.builder()
-                    .target(client.target(status))
+                    .target(publisher)
+                    .topic(mqttStatus)
                     .dataflowId(dataflowId)
                     .jobToken(jobToken)
                     .jobId(jobId)
@@ -141,7 +141,8 @@ public class MockTransfer implements Runnable {
                     .build()));
 
             futures.add(executor.submit(TransferStatusTask.builder()
-                    .target(client.target(status))
+                    .target(publisher)
+                    .topic(mqttStatus)
                     .dataflowId(dataflowId)
                     .jobToken(jobToken)
                     .jobId(jobId)
@@ -153,7 +154,7 @@ public class MockTransfer implements Runnable {
                     .build()));
         }
 
-        futures.forEach(MockTransfer::waitFor);
+        futures.forEach(MockTransferMqtt::waitFor);
 
         // Send a mock final status from the source agent ID for the entire transfer.
         TransferCompleteEvent transferCompleteEvent = new TransferCompleteEvent(dataflowId, jobId, jobToken, agentId, startDate);
@@ -163,7 +164,8 @@ public class MockTransfer implements Runnable {
         transferCompleteEvent.setFailed(0);
         transferCompleteEvent.setTotalBytes(LongStream.of(lens).sum());
         waitFor(executor.submit(TransferCompleteTask.builder()
-                .target(client.target(complete))
+                .topic(mqttComplete)
+                .target(publisher)
                 .event(transferCompleteEvent)
                 .build()));
 
@@ -178,38 +180,44 @@ public class MockTransfer implements Runnable {
 
     @Builder
     private static class TransferInitiatedTask implements Callable<Void> {
-        private ResteasyWebTarget target;
+        private JobStatusPublisher target;
+        private String topic;
         private TransferInitiatedEvent event;
 
         @Override
         public Void call() throws Exception {
 //            event.setTimestamp(new Date());
-            postWithRetry(target, event);
+//            postWithRetry(target, event);
+            target.publish(topic, event);
             return null;
         }
     }
 
     @Builder
     private static class TransferDetailTask implements Callable<Void> {
-        private ResteasyWebTarget target;
+        private JobStatusPublisher target;
+        private String topic;
         private TransferDetailEvent event;
 
         @Override
         public Void call() throws Exception {
             event.setTimestamp(new Date());
-            postWithRetry(target, event);
+//            postWithRetry(target, event);
+            target.publish(topic, event);
             return null;
         }
     }
 
     private static class TransferStatusTask implements Callable<Void> {
-        private ResteasyWebTarget target;
+        private JobStatusPublisher target;
+        private String topic;
         private TransferStatusEvent event;
 
         @Builder
-        public TransferStatusTask(ResteasyWebTarget target, String topic, String dataflowId, String jobId, String jobToken,
+        public TransferStatusTask(JobStatusPublisher target, String topic, String dataflowId, String jobId, String jobToken,
                                   String agentId, Date startDate, String direction, String name, long size) {
             this.target = target;
+            this.topic = topic;
             event = new TransferStatusEvent(dataflowId, jobId, jobToken, agentId, startDate);
             event.setDirection(direction);
             event.setName(name);
@@ -222,7 +230,8 @@ public class MockTransfer implements Runnable {
             event.setState("IN_PROGRESS");
             event.setBytesTransferred(0);
             event.setTimestamp(new Date());
-            postWithRetry(target, event);
+            target.publish(topic, event);
+//            postWithRetry(target, event);
             sleep(5, TimeUnit.MILLISECONDS);
 
             final long oneMeg = (long) Math.pow(1024, 2);
@@ -234,26 +243,30 @@ public class MockTransfer implements Runnable {
                 event.setState("IN_PROGRESS");
                 event.setBytesTransferred(bytesSent);
                 event.setTimestamp(new Date());
-                postWithRetry(target, event);
+//                postWithRetry(target, event);
+                target.publish(topic, event);
                 sleep(500, TimeUnit.MILLISECONDS);
             }
 
             event.setState("SUCCESS");
             event.setBytesTransferred((long) bytesSent);
-            postWithRetry(target, event);
+            target.publish(topic, event);
+//            postWithRetry(target, event);
             return null;
         }
     }
 
     @Builder
     private static class TransferCompleteTask implements Callable<Void> {
-        private ResteasyWebTarget target;
+        private JobStatusPublisher target;
+        private String topic;
         private TransferCompleteEvent event;
 
         @Override
         public Void call() throws Exception {
             event.setTimestamp(new Date());
-            postWithRetry(target, event);
+            target.publish(topic, event);
+//            postWithRetry(target, event);
             log.info("Transfer complete sent.");
             return null;
         }

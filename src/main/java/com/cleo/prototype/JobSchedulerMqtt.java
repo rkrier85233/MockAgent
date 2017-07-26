@@ -1,7 +1,7 @@
 package com.cleo.prototype;
 
 import com.cleo.prototype.agent.JobStatusPublisher;
-import com.cleo.prototype.agent.MockTransfer;
+import com.cleo.prototype.agent.MockTransferMqtt;
 import com.cleo.prototype.entities.activation.AgentInfo;
 import com.cleo.prototype.entities.dataflow.Recurrence;
 import com.cleo.prototype.entities.event.DataFlowEvent;
@@ -20,14 +20,14 @@ import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
-public class JobScheduler {
+public class JobSchedulerMqtt {
 
     private ScheduledExecutorService executor = Executors.newScheduledThreadPool(5);
     private Map<String, ScheduledFuture<?>> tasks = new HashMap<>();
     private AgentInfo agentInfo;
     private JobStatusPublisher publisher;
 
-    public JobScheduler(AgentInfo agentInfo) {
+    public JobSchedulerMqtt(AgentInfo agentInfo) {
         this.agentInfo = agentInfo;
         this.publisher = new JobStatusPublisher(agentInfo);
     }
@@ -53,7 +53,8 @@ public class JobScheduler {
         waitTaskCompletion(event);
         Recurrence recurrence = event.getRecurrence();
         if (recurrence != null) {
-            MockTransfer mockTransfer = MockTransfer.builder()
+            MockTransferMqtt mockTransfer = MockTransferMqtt.builder()
+                    .publisher(publisher)
                     .event(event)
                     .build();
             ScheduledFuture<?> future = executor.scheduleWithFixedDelay(mockTransfer, recurrence.getInterval(), recurrence.getInterval(), recurrence.getTimeUnit());
@@ -69,7 +70,8 @@ public class JobScheduler {
 
         waitTaskCompletion(event);
         Runnable task = () -> {
-            MockTransfer mockTransfer = MockTransfer.builder()
+            MockTransferMqtt mockTransfer = MockTransferMqtt.builder()
+                    .publisher(publisher)
                     .event(event)
                     .build();
             mockTransfer.run();

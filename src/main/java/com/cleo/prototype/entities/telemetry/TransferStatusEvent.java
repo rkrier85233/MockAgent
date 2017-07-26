@@ -22,12 +22,17 @@ public class TransferStatusEvent extends TransferEvent {
     @JsonDeserialize(using = JacksonConfig.DateDeserializer.class)
     private Date timestamp;
 
-    public TransferStatusEvent(String dataflowId, String jobId, String jobToken, String agentId) {
-        super(dataflowId, jobId, jobToken, agentId);
+    public TransferStatusEvent(String dataflowId, String jobId, String jobToken, String agentId, Date startDate) {
+        super(dataflowId, jobId, jobToken, agentId, startDate);
+    }
+
+    @Override
+    public String getType() {
+        return "status";
     }
 
     public TransferStatusEvent copy() {
-        TransferStatusEvent copy = new TransferStatusEvent(this.getDataflowId(), this.getJobId(), this.getJobToken(), this.getAgentId());
+        TransferStatusEvent copy = new TransferStatusEvent(this.getDataflowId(), this.getJobId(), this.getJobToken(), this.getAgentId(), getStartDate());
         copy.setDirection(direction);
         copy.setName(name);
         copy.setSize(size);

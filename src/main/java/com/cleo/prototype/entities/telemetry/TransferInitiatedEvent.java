@@ -7,16 +7,21 @@ import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import java.util.Date;
 
 import lombok.Getter;
-import lombok.Setter;
 
 @Getter
-@Setter
+//@Setter
 public class TransferInitiatedEvent extends TransferEvent {
     @JsonSerialize(using = JacksonConfig.DateSerializer.class)
     @JsonDeserialize(using = JacksonConfig.DateDeserializer.class)
     private Date timestamp;
 
-    public TransferInitiatedEvent(String dataflowId, String jobId, String jobToken, String agentId) {
-        super(dataflowId, jobId, jobToken, agentId);
+    public TransferInitiatedEvent(String dataflowId, String jobId, String jobToken, String agentId, Date startDate) {
+        super(dataflowId, jobId, jobToken, agentId, startDate);
+        this.timestamp = startDate;
+    }
+
+    @Override
+    public String getType() {
+        return "initiated";
     }
 }
