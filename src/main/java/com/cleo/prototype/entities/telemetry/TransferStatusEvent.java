@@ -16,7 +16,7 @@ public class TransferStatusEvent extends TransferEvent {
     private String name;
     private long size;
     private long bytesTransferred;
-    private String state;
+    private String status;
     private String message;
     @JsonSerialize(using = JacksonConfig.DateSerializer.class)
     @JsonDeserialize(using = JacksonConfig.DateDeserializer.class)

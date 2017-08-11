@@ -15,11 +15,11 @@ public class TransferCompleteEvent extends TransferEvent {
     @JsonSerialize(using = JacksonConfig.DateSerializer.class)
     @JsonDeserialize(using = JacksonConfig.DateDeserializer.class)
     private Date timestamp;
-    private String state;
-    private long total;
-    private long succeeded;
-    private long failed;
-    private long totalBytes;
+    private String status;
+    private long totalComplete;
+    private long totalSucceeded;
+    private long totalFailed;
+    private long totalBytesTransferred;
 
     public TransferCompleteEvent(String dataflowId, String jobId, String jobToken, String agentId, Date startDate) {
         super(dataflowId, jobId, jobToken, agentId, startDate);

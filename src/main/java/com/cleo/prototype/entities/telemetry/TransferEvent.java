@@ -1,7 +1,6 @@
 package com.cleo.prototype.entities.telemetry;
 
 import com.cleo.prototype.entities.common.JacksonConfig;
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 
@@ -27,6 +26,6 @@ public abstract class TransferEvent {
         this.startDate = startDate;
     }
 
-    @JsonIgnore
+    //    @JsonIgnore
     public abstract String getType();
 }

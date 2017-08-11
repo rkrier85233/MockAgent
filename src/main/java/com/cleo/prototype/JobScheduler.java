@@ -1,7 +1,5 @@
 package com.cleo.prototype;
 
-import com.cleo.prototype.agent.JobStatusPublisher;
-import com.cleo.prototype.agent.MockTransfer;
 import com.cleo.prototype.entities.activation.AgentInfo;
 import com.cleo.prototype.entities.dataflow.Recurrence;
 import com.cleo.prototype.entities.event.DataFlowEvent;
@@ -20,16 +18,14 @@ import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
-public class JobScheduler {
+public abstract class JobScheduler {
 
     private ScheduledExecutorService executor = Executors.newScheduledThreadPool(5);
     private Map<String, ScheduledFuture<?>> tasks = new HashMap<>();
     private AgentInfo agentInfo;
-    private JobStatusPublisher publisher;
 
     public JobScheduler(AgentInfo agentInfo) {
         this.agentInfo = agentInfo;
-        this.publisher = new JobStatusPublisher(agentInfo);
     }
 
     public void start(File dataFlowDir) {
@@ -53,9 +49,7 @@ public class JobScheduler {
         waitTaskCompletion(event);
         Recurrence recurrence = event.getRecurrence();
         if (recurrence != null) {
-            MockTransfer mockTransfer = MockTransfer.builder()
-                    .event(event)
-                    .build();
+            Runnable mockTransfer = createMockTransfer(event);
             ScheduledFuture<?> future = executor.scheduleWithFixedDelay(mockTransfer, recurrence.getInterval(), recurrence.getInterval(), recurrence.getTimeUnit());
             tasks.put(event.getId(), future);
             log.info("Scheduled data flow: {} to run in {} {}", event.getName(), recurrence.getInterval(), recurrence.getTimeUnit());
@@ -69,9 +63,7 @@ public class JobScheduler {
 
         waitTaskCompletion(event);
         Runnable task = () -> {
-            MockTransfer mockTransfer = MockTransfer.builder()
-                    .event(event)
-                    .build();
+            Runnable mockTransfer = createMockTransfer(event);
             mockTransfer.run();
             schedule(event);
         };
@@ -89,6 +81,8 @@ public class JobScheduler {
         log.info("Removing data flow: {} from the schedule.", event.getName());
         waitTaskCompletion(event);
     }
+
+    protected abstract Runnable createMockTransfer(DataFlowEvent event);
 
     private void waitTaskCompletion(DataFlowEvent event) {
         ScheduledFuture task = tasks.get(event.getId());

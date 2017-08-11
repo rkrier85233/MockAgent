@@ -1,5 +1,6 @@
-package com.cleo.prototype.agent;
+package com.cleo.prototype;
 
+import com.cleo.prototype.agent.JobStatusPublisher;
 import com.cleo.prototype.entities.event.DataFlowEvent;
 import com.cleo.prototype.entities.telemetry.TransferCompleteEvent;
 import com.cleo.prototype.entities.telemetry.TransferDetailEvent;
@@ -8,12 +9,7 @@ import com.cleo.prototype.entities.telemetry.TransferStatusEvent;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import org.jboss.resteasy.client.jaxrs.ResteasyWebTarget;
-import org.jboss.resteasy.plugins.providers.jackson.ResteasyJackson2Provider;
-
-import java.net.URI;
 import java.text.DecimalFormat;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -26,10 +22,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.LongStream;
 
-import javax.ws.rs.client.Entity;
-import javax.ws.rs.core.MediaType;
-import javax.ws.rs.core.Response;
-
 import lombok.Builder;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -37,12 +29,27 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 @Getter
 @Builder
-public class MockTransferMqtt implements Runnable {
+public class IoTMockTransfer implements Runnable {
     private static final ObjectMapper objectMapper = new ObjectMapper();
-
     static {
         objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     }
+
+    private static final long ONE_MEG = (long) Math.pow(1024, 2);
+    private static final long[] FILE_LENGTHS = new long[]{
+            10 * ONE_MEG,
+            20 * ONE_MEG,
+            15 * ONE_MEG,
+            3 * ONE_MEG,
+            0,
+            12 * ONE_MEG,
+            7 * ONE_MEG,
+            1 * ONE_MEG,
+            4 * ONE_MEG,
+            25 * ONE_MEG,
+            11 * ONE_MEG,
+            6 * ONE_MEG
+    };
 
     private JobStatusPublisher publisher;
     private DataFlowEvent event;
@@ -54,10 +61,6 @@ public class MockTransferMqtt implements Runnable {
         final String dataflowId = event.getId();
         final String jobToken = event.getJobToken();
         final String jobId = UUID.randomUUID().toString();
-        final URI initiate = event.getLink("initiate").getUri();
-        final URI details = event.getLink("details").getUri();
-        final URI status = event.getLink("result").getUri();
-        final URI complete = event.getLink("result").getUri();
 
         final String mqttTopicTemplate = event.getMqttTopicTemplate();
         final String mqttInitiate = String.format(mqttTopicTemplate, dataflowId, jobId, "initiated");
@@ -68,35 +71,16 @@ public class MockTransferMqtt implements Runnable {
         final String agentId = event.getSources().get(0).getAgentId();
         final String destAgentId = event.getDestinations().get(0).getAgentId();
 
-        final long oneMeg = (long) Math.pow(1024, 2);
-        final long[] lens = new long[]{
-                10 * oneMeg,
-                20 * oneMeg,
-                15 * oneMeg,
-                3 * oneMeg,
-                0,
-                12 * oneMeg,
-                7 * oneMeg,
-                1 * oneMeg,
-                4 * oneMeg,
-                25 * oneMeg,
-                11 * oneMeg,
-                6 * oneMeg
-        };
-
-        final String[] srcFiles = new String[lens.length];
-        final String[] destFiles = new String[lens.length];
+        final String[] srcFiles = new String[FILE_LENGTHS.length];
+        final String[] destFiles = new String[FILE_LENGTHS.length];
         final DecimalFormat fmt = new DecimalFormat("000");
-        for (int i = 0; i < lens.length; i++) {
+        for (int i = 0; i < FILE_LENGTHS.length; i++) {
             String name = "file" + fmt.format(i) + ".bin";
             srcFiles[i] = "/foo/bar/" + name;
             destFiles[i] = "/remote/dir/rec/" + name;
         }
 
-        final ResteasyJackson2Provider resteasyJacksonProvider = new ResteasyJackson2Provider();
-        resteasyJacksonProvider.setMapper(objectMapper);
-
-        log.info("Executing mock transfer for data flow: {}", event.getName());
+        log.info("Executing mock transfer for data flow: {}, jobId: {}.", event.getName(), jobId);
         Date startDate = new Date();
 
         final TransferInitiatedEvent transferInitiatedEvent = new TransferInitiatedEvent(dataflowId, jobId, jobToken, agentId, startDate);
@@ -108,11 +92,11 @@ public class MockTransferMqtt implements Runnable {
 
         TransferDetailEvent transferDetailEvent = new TransferDetailEvent(dataflowId, jobId, jobToken, agentId, startDate);
         transferDetailEvent.setTotalItems(srcFiles.length);
-        transferDetailEvent.setTotalBytes(LongStream.of(lens).sum());
+        transferDetailEvent.setTotalBytes(LongStream.of(FILE_LENGTHS).sum());
         for (int i = 0; i < srcFiles.length; i++) {
             transferDetailEvent.getItems().add(TransferDetailEvent.Item.builder()
                     .name(srcFiles[i])
-                    .size(lens[i])
+                    .size(FILE_LENGTHS[i])
                     .build());
         }
         waitFor(executor.submit(TransferDetailTask.builder()
@@ -125,7 +109,7 @@ public class MockTransferMqtt implements Runnable {
         for (int i = 0; i < srcFiles.length; i++) {
             final String srcFileName = srcFiles[i];
             final String destFileName = destFiles[i];
-            final long fileSize = lens[i];
+            final long fileSize = FILE_LENGTHS[i];
 
             futures.add(executor.submit(TransferStatusTask.builder()
                     .target(publisher)
@@ -154,15 +138,15 @@ public class MockTransferMqtt implements Runnable {
                     .build()));
         }
 
-        futures.forEach(MockTransferMqtt::waitFor);
+        futures.forEach(IoTMockTransfer::waitFor);
 
         // Send a mock final status from the source agent ID for the entire transfer.
         TransferCompleteEvent transferCompleteEvent = new TransferCompleteEvent(dataflowId, jobId, jobToken, agentId, startDate);
-        transferCompleteEvent.setState("SUCCESS");
-        transferCompleteEvent.setTotal(srcFiles.length);
-        transferCompleteEvent.setSucceeded(srcFiles.length);
-        transferCompleteEvent.setFailed(0);
-        transferCompleteEvent.setTotalBytes(LongStream.of(lens).sum());
+        transferCompleteEvent.setStatus("SUCCESS");
+        transferCompleteEvent.setTotalComplete(srcFiles.length);
+        transferCompleteEvent.setTotalSucceeded(srcFiles.length);
+        transferCompleteEvent.setTotalFailed(0);
+        transferCompleteEvent.setTotalBytesTransferred(LongStream.of(FILE_LENGTHS).sum());
         waitFor(executor.submit(TransferCompleteTask.builder()
                 .topic(mqttComplete)
                 .target(publisher)
@@ -172,7 +156,7 @@ public class MockTransferMqtt implements Runnable {
         try {
             executor.shutdown();
             executor.awaitTermination(10, TimeUnit.MINUTES);
-            log.info("Finished mocking a transfer for data flow: {}.", event.getName());
+            log.info("Finished mocking a transfer for data flow: {}, jobId: {}.", event.getName(), jobId);
         } catch (InterruptedException e) {
             log.error("Unable to wait for mock transfer for data flow: {} to complete.", event.getName());
         }
@@ -186,8 +170,6 @@ public class MockTransferMqtt implements Runnable {
 
         @Override
         public Void call() throws Exception {
-//            event.setTimestamp(new Date());
-//            postWithRetry(target, event);
             target.publish(topic, event);
             return null;
         }
@@ -202,7 +184,6 @@ public class MockTransferMqtt implements Runnable {
         @Override
         public Void call() throws Exception {
             event.setTimestamp(new Date());
-//            postWithRetry(target, event);
             target.publish(topic, event);
             return null;
         }
@@ -227,11 +208,10 @@ public class MockTransferMqtt implements Runnable {
         @Override
         public Void call() throws Exception {
             final TransferStatusEvent event = this.event.copy();
-            event.setState("IN_PROGRESS");
+            event.setStatus("IN_PROGRESS");
             event.setBytesTransferred(0);
             event.setTimestamp(new Date());
             target.publish(topic, event);
-//            postWithRetry(target, event);
             sleep(5, TimeUnit.MILLISECONDS);
 
             final long oneMeg = (long) Math.pow(1024, 2);
@@ -240,18 +220,16 @@ public class MockTransferMqtt implements Runnable {
                 bytesSent += oneMeg;
                 bytesSent = Math.min(bytesSent, event.getSize());
                 // Send a mock item status, updating bytes sent using agent ID.
-                event.setState("IN_PROGRESS");
+                event.setStatus("IN_PROGRESS");
                 event.setBytesTransferred(bytesSent);
                 event.setTimestamp(new Date());
-//                postWithRetry(target, event);
                 target.publish(topic, event);
                 sleep(500, TimeUnit.MILLISECONDS);
             }
 
-            event.setState("SUCCESS");
+            event.setStatus("SUCCESS");
             event.setBytesTransferred((long) bytesSent);
             target.publish(topic, event);
-//            postWithRetry(target, event);
             return null;
         }
     }
@@ -266,7 +244,6 @@ public class MockTransferMqtt implements Runnable {
         public Void call() throws Exception {
             event.setTimestamp(new Date());
             target.publish(topic, event);
-//            postWithRetry(target, event);
             log.info("Transfer complete sent.");
             return null;
         }
@@ -287,25 +264,6 @@ public class MockTransferMqtt implements Runnable {
             log.warn("Task interrupted, cause: {}", e, e);
         } catch (ExecutionException e) {
             log.warn("Task failed, cause: {}", e, e);
-        }
-    }
-
-    private static void postWithRetry(ResteasyWebTarget target, Object body) {
-        Response response = null;
-        for (int i = 0; i < 5; i++) {
-            Instant start = Instant.now();
-            response = target.request().post(Entity.entity(body, MediaType.APPLICATION_JSON_TYPE));
-            Instant end = Instant.now();
-            if (response.getStatusInfo() == Response.Status.NO_CONTENT) {
-                break;
-            }
-            long millis = end.toEpochMilli() - start.toEpochMilli();
-            log.warn("Response from SaaS was: {}-{}, retry: {} of 5. duration {} milliseconds.", response.getStatus(), response.getStatusInfo(), i + 1, millis);
-            sleep(1, TimeUnit.SECONDS);
-        }
-        if (response.getStatusInfo() != Response.Status.NO_CONTENT) {
-            String msg = String.format("Response from SaaS was: %s-%s after all retries failed.", response.getStatus(), response.getStatusInfo());
-            throw new RuntimeException(msg);
         }
     }
 }

@@ -1,4 +1,4 @@
-package com.cleo.prototype.agent;
+package com.cleo.prototype;
 
 import com.cleo.prototype.entities.event.DataFlowEvent;
 import com.cleo.prototype.entities.telemetry.TransferCompleteEvent;
@@ -41,7 +41,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 @Getter
 @Builder
-public class MockTransfer implements Runnable {
+public class RestMockTransfer implements Runnable {
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
     static {
@@ -80,6 +80,8 @@ public class MockTransfer implements Runnable {
                 6 * oneMeg
         };
 
+//        final long[] lens = new long[0];
+
         final String[] srcFiles = new String[lens.length];
         final String[] destFiles = new String[lens.length];
         final DecimalFormat fmt = new DecimalFormat("000");
@@ -98,7 +100,7 @@ public class MockTransfer implements Runnable {
                 .connectionPoolSize(10)
                 .build();
 
-        log.info("Executing mock transfer for data flow: {}", event.getName());
+        log.info("Executing mock transfer for data flow: {}, jobId: {}.", event.getName(), jobId);
         Date startDate = new Date();
 
         URI uri = UriBuilder.fromUri(initiate).build();
@@ -153,15 +155,15 @@ public class MockTransfer implements Runnable {
                     .build()));
         }
 
-        futures.forEach(MockTransfer::waitFor);
+        futures.forEach(RestMockTransfer::waitFor);
 
         // Send a mock final status from the source agent ID for the entire transfer.
         TransferCompleteEvent transferCompleteEvent = new TransferCompleteEvent(dataflowId, jobId, jobToken, agentId, startDate);
-        transferCompleteEvent.setState("SUCCESS");
-        transferCompleteEvent.setTotal(srcFiles.length);
-        transferCompleteEvent.setSucceeded(srcFiles.length);
-        transferCompleteEvent.setFailed(0);
-        transferCompleteEvent.setTotalBytes(LongStream.of(lens).sum());
+        transferCompleteEvent.setStatus("SUCCESS");
+        transferCompleteEvent.setTotalComplete(srcFiles.length);
+        transferCompleteEvent.setTotalSucceeded(srcFiles.length);
+        transferCompleteEvent.setTotalFailed(0);
+        transferCompleteEvent.setTotalBytesTransferred(LongStream.of(lens).sum());
         waitFor(executor.submit(TransferCompleteTask.builder()
                 .target(client.target(complete))
                 .event(transferCompleteEvent)
@@ -170,7 +172,7 @@ public class MockTransfer implements Runnable {
         try {
             executor.shutdown();
             executor.awaitTermination(10, TimeUnit.MINUTES);
-            log.info("Finished mocking a transfer for data flow: {}.", event.getName());
+            log.info("Finished mocking a transfer for data flow: {}, jobId: {}.", event.getName(), jobId);
         } catch (InterruptedException e) {
             log.error("Unable to wait for mock transfer for data flow: {} to complete.", event.getName());
         }
@@ -183,7 +185,6 @@ public class MockTransfer implements Runnable {
 
         @Override
         public Void call() throws Exception {
-//            event.setTimestamp(new Date());
             postWithRetry(target, event);
             return null;
         }
@@ -219,7 +220,7 @@ public class MockTransfer implements Runnable {
         @Override
         public Void call() throws Exception {
             final TransferStatusEvent event = this.event.copy();
-            event.setState("IN_PROGRESS");
+            event.setStatus("IN_PROGRESS");
             event.setBytesTransferred(0);
             event.setTimestamp(new Date());
             postWithRetry(target, event);
@@ -231,14 +232,14 @@ public class MockTransfer implements Runnable {
                 bytesSent += oneMeg;
                 bytesSent = Math.min(bytesSent, event.getSize());
                 // Send a mock item status, updating bytes sent using agent ID.
-                event.setState("IN_PROGRESS");
+                event.setStatus("IN_PROGRESS");
                 event.setBytesTransferred(bytesSent);
                 event.setTimestamp(new Date());
                 postWithRetry(target, event);
                 sleep(500, TimeUnit.MILLISECONDS);
             }
 
-            event.setState("SUCCESS");
+            event.setStatus("SUCCESS");
             event.setBytesTransferred((long) bytesSent);
             postWithRetry(target, event);
             return null;
@@ -287,7 +288,8 @@ public class MockTransfer implements Runnable {
                 break;
             }
             long millis = end.toEpochMilli() - start.toEpochMilli();
-            log.warn("Response from SaaS was: {}-{}, retry: {} of 5. duration {} milliseconds.", response.getStatus(), response.getStatusInfo(), i + 1, millis);
+            String error = response.readEntity(String.class);
+            log.warn("Response from SaaS was: {}-{}-{}, retry: {} of 5. duration {} milliseconds.", response.getStatus(), response.getStatusInfo(), error, i + 1, millis);
             sleep(1, TimeUnit.SECONDS);
         }
         if (response.getStatusInfo() != Response.Status.NO_CONTENT) {

@@ -10,6 +10,7 @@ import com.amazonaws.services.sqs.model.DeleteMessageRequest;
 import com.amazonaws.services.sqs.model.Message;
 import com.amazonaws.services.sqs.model.MessageAttributeValue;
 import com.amazonaws.services.sqs.model.ReceiveMessageRequest;
+import com.cleo.prototype.IotJobScheduler;
 import com.cleo.prototype.JobScheduler;
 import com.cleo.prototype.entities.activation.ActivationRequest;
 import com.cleo.prototype.entities.activation.AgentInfo;
@@ -92,7 +93,7 @@ public class MockAgent {
             datastoreDir.mkdirs();
             dataflowsDir = new File(rootDir, agentInfo.getAgentId() + "/dataflow");
             dataflowsDir.mkdirs();
-            jobScheduler = new JobScheduler(agentInfo);
+            jobScheduler = new IotJobScheduler(agentInfo);
             jobScheduler.start(dataflowsDir);
             messageHandler = new MessageHandler(agentInfo);
             messageHandler.start();
